@@ -3,7 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import { BarChart3, FileText, GitCompare, MessageSquare } from "lucide-react";
 
-import { Contract, RiskAnalysis, api } from "@/lib/api";
+import { Contract, RiskAnalysis, api, extractApiErrorMessage } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 
 const tabs = [
@@ -18,15 +18,23 @@ type SearchResponse = {
   confidence: number;
 };
 
+type ChatMessage = {
+  role: "user" | "assistant";
+  content: string;
+  confidence?: number;
+};
+
 const DocumentAnalysis = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [summary, setSummary] = useState("");
   const [risk, setRisk] = useState<RiskAnalysis | null>(null);
   const [question, setQuestion] = useState("");
-  const [answer, setAnswer] = useState("");
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [activeTab, setActiveTab] = useState<(typeof tabs)[number]["id"]>("summary");
   const [loading, setLoading] = useState(true);
+  const [asking, setAsking] = useState(false);
+  const [askError, setAskError] = useState("");
 
   const selectedId = searchParams.get("contractId");
   const selectedContract = useMemo(
@@ -56,7 +64,9 @@ const DocumentAnalysis = () => {
       .then(([summaryResponse, riskResponse]) => {
         setSummary(summaryResponse.data.summary);
         setRisk(riskResponse.data);
-        setAnswer("");
+        setQuestion("");
+        setAskError("");
+        setChatMessages([]);
       })
       .finally(() => setLoading(false));
   }, [selectedId]);
@@ -67,11 +77,30 @@ const DocumentAnalysis = () => {
       return;
     }
 
-    const response = await api.get<SearchResponse>(`/contracts/${selectedId}/search`, {
-      params: { question },
-    });
-    setAnswer(response.data.answer);
-    setActiveTab("ask");
+    const userQuestion = question.trim();
+    setAskError("");
+    setAsking(true);
+    setQuestion("");
+    setChatMessages((prev) => [...prev, { role: "user", content: userQuestion }]);
+
+    try {
+      const response = await api.get<SearchResponse>(`/contracts/${selectedId}/search`, {
+        params: { question: userQuestion },
+      });
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: response.data.answer || "I could not generate an answer for that question.",
+          confidence: response.data.confidence,
+        },
+      ]);
+      setActiveTab("ask");
+    } catch (error: unknown) {
+      setAskError(extractApiErrorMessage(error, "Ask AI failed. Please try again."));
+    } finally {
+      setAsking(false);
+    }
   };
 
   return (
@@ -226,8 +255,33 @@ const DocumentAnalysis = () => {
 
             {!loading && selectedContract && activeTab === "ask" ? (
               <div className="flex flex-col h-full gap-4">
-                <div className="glass rounded-xl p-4 text-sm text-muted-foreground whitespace-pre-line min-h-[200px]">
-                  {answer || "Ask a question about this contract to retrieve relevant clauses."}
+                <div className="glass rounded-xl p-4 min-h-[280px] max-h-[420px] overflow-auto space-y-3">
+                  {chatMessages.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      Ask a question about this contract to start a conversation.
+                    </p>
+                  ) : (
+                    chatMessages.map((message, index) => (
+                      <div
+                        key={`${message.role}-${index}`}
+                        className={`rounded-xl p-3 text-sm whitespace-pre-line ${
+                          message.role === "user"
+                            ? "bg-primary/10 border border-primary/20 ml-6"
+                            : "bg-secondary/30 border border-border/40 mr-6"
+                        }`}
+                      >
+                        <div className="text-xs uppercase tracking-wide mb-1 text-muted-foreground">
+                          {message.role === "user" ? "You" : "AI Assistant"}
+                        </div>
+                        <div>{message.content}</div>
+                        {message.role === "assistant" && typeof message.confidence === "number" ? (
+                          <div className="mt-2 text-[11px] text-muted-foreground">
+                            Relevance confidence: {(message.confidence * 100).toFixed(0)}%
+                          </div>
+                        ) : null}
+                      </div>
+                    ))
+                  )}
                 </div>
                 <form className="flex gap-2" onSubmit={handleAsk}>
                   <input
@@ -236,9 +290,13 @@ const DocumentAnalysis = () => {
                     onChange={(event) => setQuestion(event.target.value)}
                     placeholder="Ask about this contract..."
                     className="flex-1 bg-secondary/40 border border-border/40 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-primary/50"
+                    disabled={asking}
                   />
-                  <Button type="submit">Send</Button>
+                  <Button type="submit" disabled={asking || !question.trim()}>
+                    {asking ? "Thinking..." : "Send"}
+                  </Button>
                 </form>
+                {askError ? <p className="text-sm text-destructive">{askError}</p> : null}
               </div>
             ) : null}
           </div>

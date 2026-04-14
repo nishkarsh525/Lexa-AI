@@ -22,6 +22,9 @@ def cosine_similarity(a: list[float], b: list[float]) -> float:
 
 
 def semantic_search(db: Session, contract_id: int, question: str):
+    if not question or not question.strip():
+        return {"answer": "Please enter a question first.", "confidence": 0.0}
+
     query_embedding = generate_embedding(question)
     chunks = db.query(ContractChunk).filter(ContractChunk.contract_id == contract_id).all()
 
@@ -38,20 +41,18 @@ def semantic_search(db: Session, contract_id: int, question: str):
         return {"answer": "No relevant content found in this contract.", "confidence": 0.0}
 
     strong_chunks = []
+    fallback_chunks = []
     similarity_scores = []
     for content, similarity in ranked_chunks:
         similarity_scores.append(similarity)
+        fallback_chunks.append(content)
         if similarity >= SIMILARITY_THRESHOLD:
             strong_chunks.append(content)
 
-    if not strong_chunks:
-        avg_conf = round(sum(similarity_scores) / len(similarity_scores), 2)
-        return {
-            "answer": "No strongly relevant clauses found for this question.",
-            "confidence": avg_conf,
-        }
-
-    context = "\n\n".join(strong_chunks)
+    # Always attempt an answer from the best retrieved chunks.
+    context_chunks = strong_chunks if strong_chunks else fallback_chunks
+    context = "\n\n".join(context_chunks)
     answer = generate_answer(context, question)
-    avg_confidence = round(sum(similarity_scores) / len(similarity_scores), 2)
+    raw_confidence = sum(similarity_scores) / len(similarity_scores)
+    avg_confidence = round(max(0.0, min(1.0, raw_confidence)), 2)
     return {"answer": answer, "confidence": avg_confidence}

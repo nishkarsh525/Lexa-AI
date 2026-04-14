@@ -4,7 +4,7 @@ import { motion } from "framer-motion";
 import { Check, FileText, LoaderCircle, Upload } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { api } from "@/lib/api";
+import { api, extractApiErrorMessage } from "@/lib/api";
 
 const UploadDocument = () => {
   const navigate = useNavigate();
@@ -67,8 +67,8 @@ const UploadDocument = () => {
 
       setStatusMessage("Contract uploaded and indexed successfully.");
       navigate(`/dashboard/documents?contractId=${response.data.id}`);
-    } catch (err: any) {
-      setError(err?.response?.data?.detail || "Upload failed.");
+    } catch (error: unknown) {
+      setError(extractApiErrorMessage(error, "Upload failed."));
     } finally {
       setIsUploading(false);
     }
