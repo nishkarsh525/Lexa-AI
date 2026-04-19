@@ -6,14 +6,13 @@
 *.pyo
 *.pyd
 *.log
-*.txt
+
 
 __pycache__/
 .pytest_cache/
 .mypy_cache/
 
 backend/venv/
-backend/requirements.txt
 backend/uploads/
 frontend/node_modules/
 frontend/dist/
