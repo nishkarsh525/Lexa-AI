@@ -12,6 +12,7 @@ __pycache__/
 .mypy_cache/
 
 backend/venv/
+backend/requirements.txt
 backend/uploads/
 frontend/node_modules/
 frontend/dist/
