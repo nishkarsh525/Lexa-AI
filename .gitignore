@@ -6,6 +6,7 @@
 *.pyo
 *.pyd
 *.log
+*.txt
 
 __pycache__/
 .pytest_cache/
